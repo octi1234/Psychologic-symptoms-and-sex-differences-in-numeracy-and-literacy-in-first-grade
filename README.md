@@ -1,2 +1,1 @@
-# Psychologic-symptoms-and-sex-differences-in-numeracy-and-literacy-in-first-grade
-R code
+The data necessary to reproduce the database creation and the analyses are not publicly accessible for reasons of privacy for the participants. Established researchers who would like access to the data from the Elfe cohort study can request them to the Committee of Access to the Data from the Elfe cohort on the website of the survey: www.elfe-france.fr. This study was preregistered, see https://osf.io/5euw6/?view_only=8fd653aab8094cf8a0f48c8fb26a3a27 (anonymous link for peer review). 
