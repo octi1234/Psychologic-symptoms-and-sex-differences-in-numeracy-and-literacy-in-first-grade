@@ -1,0 +1,387 @@
+---
+title: "6_Del Giudice-S_index figure distributions"
+output: html_document
+date: "2025-09-20"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Loading file 
+
+```{r}
+setwd("/Volumes/Donn_es_ELFE/20230217Dem768_511_HP")
+test<-read.csv("test")
+
+# Computing SEXE_ENF as factor. 
+test$sex<-factor(test$SEXE_ENF,labels=c("Boys","Girls"))
+```
+
+
+
+
+# Modification of the original code of Del Gidudice, 2023 (see references in the article)
+
+```{r}
+s.index <- function(xA, xB, bounds = 3, empirical = TRUE, extrapolate = FALSE, bw.adjust = 1.5, conf = .95, boot.n = 1000, boot.accel = TRUE, plot = TRUE, colors = "default", xlab = "", group.labels = c("A","B")) {
+  
+  ########## Graphical device check for Windows
+  
+  if(.Platform$OS.type=="windows") quartz<-function(...) windows(...)
+  
+  
+  ########## Determine input type (empirical data vs. mean and SD)
+  
+  if (length(xA) == 2 & length(xB) == 2) input = "descriptives"  else input = "data"
+  
+  
+  ########## Main computations
+  
+  output = list()
+  
+  ##### Group and population statistics
+  
+  xA = xA[complete.cases(xA)]
+  xB = xB[complete.cases(xB)]
+  
+  if (input == "descriptives") {
+    
+    empirical=FALSE
+    mean.xA = xA[1] 
+    sd.xA = xA[2]
+    mean.xB = xB[1]
+    sd.xB = xB[2]
+  } else {
+    
+    mean.xA = mean(xA) 
+    sd.xA = sd(xA)
+    mean.xB = mean(xB)
+    sd.xB = sd(xB)
+  }
+  
+  mean.pop = (mean.xA+mean.xB)/2
+  sd.pop = sqrt((sd.xA^2 + sd.xB^2 + (mean.xA-mean.pop)^2 + (mean.xB-mean.pop)^2)/2)
+  
+  lower.bound = mean.pop - bounds*sd.pop  # higher and lower bounds 
+  upper.bound = mean.pop + bounds*sd.pop 
+  
+  if (empirical == TRUE & extrapolate == FALSE) {
+    
+    lower.bound = max(lower.bound, min(c(xA,xB)) )
+    upper.bound = min(upper.bound, max(c(xA,xB)) )
+  }
+  
+  ##### Calculate group proportions
+  
+  values = seq(lower.bound, upper.bound, length=101)	# values for the estimation of group proportions
+  
+  if (input == "descriptives" | empirical == FALSE) {
+    
+    dens.xA = dnorm(values, mean=mean.xA, sd=sd.xA)
+    dens.xB = dnorm(values, mean=mean.xB, sd=sd.xB)
+    dens.mean.xA = dnorm(mean.pop, mean=mean.xA, sd=sd.xA)
+    dens.mean.xB = dnorm(mean.pop, mean=mean.xB, sd=sd.xB)
+  } else {
+    
+    bw = mean(bw.nrd0(xA), bw.nrd0(xB)) # determine the kernel bandwidth
+    dens.xA = density(xA, n=101, from=min(values), to=max(values), bw=bw, adjust=bw.adjust)$y  # estimate densities using the same bandwidth for the two groups
+    dens.xB = density(xB, n=101, from=min(values), to=max(values), bw=bw, adjust=bw.adjust)$y
+    dens.mean.xA = density(xA, n=1, from=mean.pop, to=mean.pop, bw=bw, adjust=bw.adjust)$y # density of xA at the population mean
+    dens.mean.xB = density(xB, n=1, from=mean.pop, to=mean.pop, bw=bw, adjust=bw.adjust)$y # density of xB at the population mean
+  }
+  
+  percent.xA = 100*dens.xA/(dens.xA+dens.xB)
+  percent.xB = 100-percent.xA
+  
+  ##### Calculate S-index
+  
+  prop.xA.low = percent.xA[1]/100
+  prop.xA.mean = dens.mean.xA/(dens.mean.xA+dens.mean.xB)
+  prop.xA.high = percent.xA[101]/100
+  
+  s.index = sign((prop.xA.low-prop.xA.mean)*(prop.xA.mean-prop.xA.high))*sqrt((abs(prop.xA.low-prop.xA.mean)/(0.5+(0.5-prop.xA.mean)*sign(prop.xA.low-prop.xA.mean)))*(abs(prop.xA.high-prop.xA.mean)/(0.5+(0.5-prop.xA.mean)*sign(prop.xA.high-prop.xA.mean))))
+  
+  output$s.index = s.index
+  output$bounds = bounds
+  
+  output$CI = c(NA, NA)
+  
+  if (prop.xA.high > 0.5) output$upper.group = group.labels[1] else output$upper.group = group.labels[2]
+  if (prop.xA.high == 0.5) output$upper.group = NA
+  
+  if (input == "data" & empirical == TRUE) {
+    
+    output$prop.bw = bw*bw.adjust
+    output$distrib.bw = bw
+  }	else output$distrib.bw = output$prop.bw = NA
+  
+  
+  ########## Bootstrap confidence intervals (BCa) for S-index 
+  
+  if (is.null(conf)==FALSE & input == "data") {
+    
+    boot_s = numeric(boot.n)
+    alpha_level = 1-conf
+    
+    for (sample in 1:boot.n) {
+      
+      xA.sampled = xA[sample(seq(1:length(xA)), replace = TRUE)]
+      xB.sampled = xB[sample(seq(1:length(xB)), replace = TRUE)]
+      
+      mean.xA.sampled = mean(xA.sampled) 
+      sd.xA.sampled = sd(xA.sampled)
+      mean.xB.sampled = mean(xB.sampled)
+      sd.xB.sampled = sd(xB.sampled)
+      
+      mean.pop.sampled = (mean.xA.sampled+mean.xB.sampled)/2
+      sd.pop.sampled = sqrt((sd.xA.sampled^2 + sd.xB.sampled^2 + (mean.xA.sampled-mean.pop.sampled)^2 + (mean.xB.sampled-mean.pop.sampled)^2)/2)
+      
+      lower.bound.sampled = mean.pop.sampled - bounds*sd.pop.sampled  
+      upper.bound.sampled = mean.pop.sampled + bounds*sd.pop.sampled
+      
+      if (extrapolate == FALSE) {
+        
+        lower.bound.sampled = max(lower.bound.sampled, min(c(xA.sampled,xB.sampled)) )
+        upper.bound.sampled = min(upper.bound.sampled, max(c(xA.sampled,xB.sampled)) )
+      }
+      
+      values.sampled = seq(lower.bound.sampled, upper.bound.sampled, length=3)
+      
+      if (empirical == FALSE) {
+        
+        dens.xA.sampled = dnorm(values.sampled, mean=mean.xA.sampled, sd=sd.xA.sampled)
+        dens.xB.sampled = dnorm(values.sampled, mean=mean.xB.sampled, sd=sd.xB.sampled)	
+      } else {
+        
+        bw.sampled = mean(bw.nrd0(xA.sampled), bw.nrd0(xB.sampled)) # determine the kernel bandwidth					
+        dens.xA.sampled = density(xA.sampled, n=3, from=min(values.sampled), to=max(values.sampled), bw=bw.sampled, adjust=bw.adjust)$y  	
+        dens.xB.sampled = density(xB.sampled, n=3, from=min(values.sampled), to=max(values.sampled), bw=bw.sampled, adjust=bw.adjust)$y
+      }
+      
+      dens.mean.xA.sampled = density(xA.sampled, n=1, from=mean.pop.sampled, to=mean.pop.sampled, bw=bw.sampled, adjust=bw.adjust)$y 			
+      dens.mean.xB.sampled = density(xB.sampled, n=1, from=mean.pop.sampled, to=mean.pop.sampled, bw=bw.sampled, adjust=bw.adjust)$y 
+      
+      prop.xA.low.sampled = dens.xA.sampled[1]/(dens.xA.sampled[1] + dens.xB.sampled[1])
+      prop.xA.mean.sampled = dens.mean.xA.sampled/(dens.mean.xA.sampled + dens.mean.xB.sampled)
+      prop.xA.high.sampled = dens.xA.sampled[3]/(dens.xA.sampled[3] + dens.xB.sampled[3])
+      
+      boot_s[sample] = sign((prop.xA.low.sampled-prop.xA.mean.sampled)*(prop.xA.mean.sampled-prop.xA.high.sampled))*sqrt((abs(prop.xA.low.sampled-prop.xA.mean.sampled)/(0.5+(0.5-prop.xA.mean.sampled)*sign(prop.xA.low.sampled-prop.xA.mean.sampled)))*(abs(prop.xA.high.sampled-prop.xA.mean.sampled)/(0.5+(0.5-prop.xA.mean.sampled)*sign(prop.xA.high.sampled-prop.xA.mean.sampled))))
+    }
+    
+    if (boot.accel == TRUE) {
+      
+      jackknife_results = numeric(length(xA)+length(xB))
+      n.1 = length(xA)
+      n.2 = length(xB)
+      
+      Marker.1 = seq(1, n.1, 1)
+      
+      for (sample in 1:n.1) {
+        
+        xA.jack = xA[Marker.1[-sample]]
+        xB.jack = xB
+        
+        mean.xA.jack = mean(xA.jack) 
+        sd.xA.jack = sd(xA.jack)
+        mean.xB.jack = mean(xB.jack)
+        sd.xB.jack = sd(xB.jack)
+        
+        mean.pop.jack = (mean.xA.jack+mean.xB.jack)/2
+        sd.pop.jack = sqrt((sd.xA.jack^2 + sd.xB.jack^2 + (mean.xA.jack-mean.pop.jack)^2 + (mean.xB.jack-mean.pop.jack)^2)/2)
+        
+        lower.bound.jack = mean.pop.jack - bounds*sd.pop.jack  
+        upper.bound.jack = mean.pop.jack + bounds*sd.pop.jack
+        
+        if (extrapolate == FALSE) {
+          
+          lower.bound.jack = max(lower.bound.jack, min(c(xA.jack,xB.jack)) )
+          upper.bound.jack = min(upper.bound.jack, max(c(xA.jack,xB.jack)) )
+        }
+        
+        values.jack = seq(lower.bound.jack, upper.bound.jack, length=3)
+        
+        if (empirical == FALSE) {
+          
+          dens.xA.jack = dnorm(values.jack, mean=mean.xA.jack, sd=sd.xA.jack)
+          dens.xB.jack = dnorm(values.jack, mean=mean.xB.jack, sd=sd.xB.jack)	
+        } else {
+          
+          bw.jack = mean(bw.nrd0(xA.jack), bw.nrd0(xB.jack)) # determine the kernel bandwidth					
+          dens.xA.jack = density(xA.jack, n=3, from=min(values.jack), to=max(values.jack), bw=bw.jack, adjust=bw.adjust)$y  			
+          dens.xB.jack = density(xB.jack, n=3, from=min(values.jack), to=max(values.jack), bw=bw.jack, adjust=bw.adjust)$y
+        }
+        
+        dens.mean.xA.jack = density(xA.jack, n=1, from=mean.pop.jack, to=mean.pop.jack, bw=bw.jack, adjust=bw.adjust)$y 						
+        dens.mean.xB.jack = density(xB.jack, n=1, from=mean.pop.jack, to=mean.pop.jack, bw=bw.jack, adjust=bw.adjust)$y
+        
+        prop.xA.low.jack = dens.xA.jack[1]/(dens.xA.jack[1] + dens.xB.jack[1])
+        prop.xA.mean.jack = dens.mean.xA.jack/(dens.mean.xA.jack + dens.mean.xB.jack)		
+        prop.xA.high.jack = dens.xA.jack[3]/(dens.xA.jack[3] + dens.xB.jack[3])
+        
+        jackknife_results[sample] = sign((prop.xA.low.jack-prop.xA.mean.jack)*(prop.xA.mean.jack-prop.xA.high.jack))*sqrt((abs(prop.xA.low.jack-prop.xA.mean.jack)/(0.5+(0.5-prop.xA.mean.jack)*sign(prop.xA.low.jack-prop.xA.mean.jack)))*(abs(prop.xA.high.jack-prop.xA.mean.jack)/(0.5+(0.5-prop.xA.mean.jack)*sign(prop.xA.high.jack-prop.xA.mean.jack))))	
+      }
+      
+      Marker.2 = seq(1, n.2, 1)
+      
+      for (sample in 1:n.2) {
+        
+        xA.jack = xA
+        xB.jack = xB[Marker.2[-sample]]
+        
+        mean.xA.jack = mean(xA.jack) 
+        sd.xA.jack = sd(xA.jack)
+        mean.xB.jack = mean(xB.jack)
+        sd.xB.jack = sd(xB.jack)
+        
+        mean.pop.jack = (mean.xA.jack+mean.xB.jack)/2
+        sd.pop.jack = sqrt((sd.xA.jack^2 + sd.xB.jack^2 + (mean.xA.jack-mean.pop.jack)^2 + (mean.xB.jack-mean.pop.jack)^2)/2)
+        
+        lower.bound.jack = mean.pop.jack - bounds*sd.pop.jack  
+        upper.bound.jack = mean.pop.jack + bounds*sd.pop.jack
+        
+        if (extrapolate == FALSE) {
+          
+          lower.bound.jack = max(lower.bound.jack, min(c(xA.jack,xB.jack)) )
+          upper.bound.jack = min(upper.bound.jack, max(c(xA.jack,xB.jack)) )
+        }
+        
+        values.jack = seq(lower.bound.jack, upper.bound.jack, length=3)
+        
+        if (empirical == FALSE) {
+          
+          dens.xA.jack = dnorm(values.jack, mean=mean.xA.jack, sd=sd.xA.jack)
+          dens.xB.jack = dnorm(values.jack, mean=mean.xB.jack, sd=sd.xB.jack)	
+        } else {
+          
+          bw.jack = mean(bw.nrd0(xA.jack), bw.nrd0(xB.jack)) # determine the kernel bandwidth					
+          dens.xA.jack = density(xA.jack, n=3, from=min(values.jack), to=max(values.jack), bw=bw.jack, adjust=bw.adjust)$y  			
+          dens.xB.jack = density(xB.jack, n=3, from=min(values.jack), to=max(values.jack), bw=bw.jack, adjust=bw.adjust)$y
+        }
+        
+        dens.mean.xA.jack = density(xA.jack, n=1, from=mean.pop.jack, to=mean.pop.jack, bw=bw.jack, adjust=bw.adjust)$y 					
+        dens.mean.xB.jack = density(xB.jack, n=1, from=mean.pop.jack, to=mean.pop.jack, bw=bw.jack, adjust=bw.adjust)$y
+        
+        prop.xA.low.jack = dens.xA.jack[1]/(dens.xA.jack[1] + dens.xB.jack[1])
+        prop.xA.mean.jack = dens.mean.xA.jack/(dens.mean.xA.jack + dens.mean.xB.jack)		
+        prop.xA.high.jack = dens.xA.jack[3]/(dens.xA.jack[3] + dens.xB.jack[3])
+        
+        jackknife_results[n.1+sample] = sign((prop.xA.low.jack-prop.xA.mean.jack)*(prop.xA.mean.jack-prop.xA.high.jack))*sqrt((abs(prop.xA.low.jack-prop.xA.mean.jack)/(0.5+(0.5-prop.xA.mean.jack)*sign(prop.xA.low.jack-prop.xA.mean.jack)))*(abs(prop.xA.high.jack-prop.xA.mean.jack)/(0.5+(0.5-prop.xA.mean.jack)*sign(prop.xA.high.jack-prop.xA.mean.jack))))
+      }
+      
+      Mean.Jackknife = mean(jackknife_results)
+      
+      a = (sum((Mean.Jackknife-jackknife_results)^3))/(6*sum((Mean.Jackknife-jackknife_results)^2)^(3/2)) # estimate acceleration parameter
+    } else a = 0  # set the acceleration parameter to 0 if (boot.accel == FALSE)
+    
+    z0 = qnorm(sum(boot_s < output$s.index)/boot.n) # estimate bias-correction parameter
+    
+    CI.Low.BCa = pnorm(z0 + (z0+qnorm(alpha_level/2))/(1-a*(z0+qnorm(alpha_level/2))))
+    CI.Up.BCa = pnorm(z0 + (z0+qnorm(1-alpha_level/2))/(1-a*(z0+qnorm(1-alpha_level/2))))
+    
+    output$CI = c(quantile(boot_s, CI.Low.BCa, names=FALSE), quantile(boot_s, CI.Up.BCa, names=FALSE))	
+  }
+  
+  
+  ########## Plot
+  
+  if (plot == TRUE) {
+    
+    ##### Estimate the distributions of the two groups
+    
+    values.distrib = seq((mean.pop - 2*bounds*sd.pop), (mean.pop + 2*bounds*sd.pop), length=200)  # values for the estimation of the distributions
+    
+    if (input == "descriptives" | empirical == FALSE) {
+      
+      dens.xA.distrib = dnorm(values.distrib, mean=mean.xA, sd=sd.xA)
+      dens.xB.distrib = dnorm(values.distrib, mean=mean.xB, sd=sd.xB)
+    } else {
+      
+      dens.xA.distrib = density(xA, n=200, from=min(values.distrib), to=max(values.distrib), bw=bw, adjust=1)$y 
+      dens.xB.distrib = density(xB, n=200, from=min(values.distrib), to=max(values.distrib), bw=bw, adjust=1)$y
+    }
+    
+    ##### Draw plot
+    
+    quartz(width=6, height=5.1)
+    
+    col.sd.text="grey75"
+    col.grid="grey90"
+    col.data.limits="grey60"
+    
+    if (length(colors) != 2) {
+      if (colors == "default") colors = c(rgb(78, 68, 229, maxColorValue=255), rgb(215, 40, 37, maxColorValue=255)) else {
+        
+        if (colors == "sexdiff") colors = c(rgb(45, 140, 237, maxColorValue=255), rgb(235, 73, 180, maxColorValue=255))	
+      }
+    }
+    
+    plot(values, percent.xB, xlab=xlab, ylab="", bty="l", type="n", las=1, xlim=c((mean.pop - 1.1*bounds*sd.pop),(mean.pop + 1.1*bounds*sd.pop)), ylim=c(3.5, 103), cex.lab=1.3, cex.axis=1.2, yaxt="n")
+    axis(side=2, las=1, cex.axis=1.2, at=c(0, 20, 40, 60, 80, 100))
+    axis(side=2, las=1, cex.axis=1.2, at=51, labels=c("%"), tick=FALSE, mgp=c(0,2.5,0))
+
+    polygon(x=c((mean.pop - 1.3*bounds*sd.pop),(mean.pop + 1.3*bounds*sd.pop), (mean.pop + 1.3*bounds*sd.pop), (mean.pop - 1.3*bounds*sd.pop)), y=c(101, 101, 120, 120), col="white", border="white", lwd=2)
+    polygon(values.distrib, dens.xB.distrib*(40/max(c(dens.xB.distrib, dens.xA.distrib))), col=adjustcolor(colors[2], alpha.f=0.10), border=adjustcolor(colors[2], alpha.f=0.20), lwd=1.5)
+    polygon(values.distrib, dens.xA.distrib*(40/max(c(dens.xB.distrib, dens.xA.distrib))), col=adjustcolor(colors[1], alpha.f=0.10), border=adjustcolor(colors[1], alpha.f=0.23), lwd=1.5)
+    lines(values, percent.xB, col=adjustcolor(colors[2], alpha.f=1), lwd=2.2)
+    lines(values, percent.xA, col=adjustcolor(colors[1], alpha.f=1), lwd=2.2)
+  }
+  
+  
+  ########## Output
+  
+  return(output)
+}
+```
+
+
+# Distributions Del giudice style 
+
+
+## Standardisation des variables 
+
+```{r}
+test$scorenum6<-scale(test$scorenum6)
+test$scorenum4<-scale(test$scorenum4)
+test$scorelit6<-scale(test$scorelit6)
+test$scorelit4<-scale(test$scorelit4)
+```
+
+## Externalizing and internalizing scores 
+
+```{r}
+s.index (test$EXT[test$sex=="Boys"],test$EXT[test$sex=="Girls"], xlab = "Externalizing scores", group.labels = c("Boys","Girls"))
+
+
+s.index (test$INT[test$sex=="Boys"],test$INT[test$sex=="Girls"], xlab = "Internalizing scores", group.labels = c("Boys","Girls"))
+```
+
+## Numeracy in kindergarten and first grade
+
+```{r}
+s.index (test$scorenum6[test$sex=="Boys"],test$scorenum6[test$sex=="Girls"], xlab = "Numeracy scores in first grade", group.labels = c("Boys","Girls"))
+
+
+s.index (test$scorenum4[test$sex=="Boys"],test$scorenum4[test$sex=="Girls"], xlab = "Numeracy scores in kindergarten", group.labels = c("Boys","Girls"))
+
+```
+
+## Literacy in kindergarten and first grade
+
+```{r}
+s.index (test$scorelit6[test$sex=="Boys"],test$scorelit6[test$sex=="Girls"], xlab = "Literacy scores in first grade", group.labels = c("Boys","Girls"))
+
+s.index (test$scorelit4[test$sex=="Boys"],test$scorelit4[test$sex=="Girls"], xlab = "Literacy scores in kindergarten", group.labels = c("Boys","Girls"))
+
+```
+
+## MB-CDI
+```{r}
+s.index (test$mcascore[test$sex=="Boys"],test$mcascore[test$sex=="Girls"], xlab = "MB-CDI scores at 24 months old", group.labels = c("Boys","Girls"))
+```
+
+## Developpmental age from CDI 
+
+```{r}
+s.index (test$agedev[test$sex=="Boys"],test$agedev[test$sex=="Girls"], xlab = "Developmental age at 5.5 years old (in months)", group.labels = c("Boys","Girls"))
+```
