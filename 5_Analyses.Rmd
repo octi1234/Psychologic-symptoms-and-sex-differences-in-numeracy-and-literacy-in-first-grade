@@ -1,0 +1,361 @@
+---
+title: "5_Analyses"
+output: html_document
+date: "2025-09-20"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Loading file and packages
+
+```{r}
+setwd("/Volumes/Donn_es_ELFE/20230217Dem768_511_HP")
+test<-read.csv("test")
+
+library(ggplot2)
+library(ggcorrplot)
+library(effsize)
+library(cowplot)
+library(haven)
+library(dplyr)
+library(lavaan)
+library(lavaanPlot)
+library(performance)
+library(interactions)
+library(easystats)
+library(corrplot)
+
+```
+
+# Calculing sample size
+
+## Hypothesis 1
+
+```{r}
+# Externalizing score
+table(complete.cases(test[,"EXT"]))
+
+# Internalizing score
+table(complete.cases(test[,"EXT"]))
+
+```
+
+## Hypothesis 2
+
+```{r}
+# Numeracy: complete cases for scorenum4, scorenum6, SDQ (preschool et/or firstgrade),
+#age, and SES (educ_m, educ_f, and income)
+table(complete.cases(test[,c("scorenum6","scorenum4","A06X_AGEM","SDQ","income","educ_m","educ_f")]))
+
+# Literacy: complete cases for scorelit4, scorelit6, SDQ (preschool et/or firstgrade),
+#age, and SES (educ_m, educ_f, and income)
+table(complete.cases(test[,c("scorelit6","scorelit4","A06X_AGEM","SDQ","income","educ_m","educ_f")]))
+
+# In total : 
+table(complete.cases(test[,c("scorenum6","scorenum4","A06X_AGEM","SDQ","income","educ_m","educ_f")]|test[,c("scorelit6","scorelit4","A06X_AGEM","SDQ","income","educ_m","educ_f")]))
+```
+
+## Hypothesis 3 and 4
+
+```{r}
+# Numeracy: complete cases for scorenum6, SDQ (preschool et/or firstgrade),
+#age, and SES (educ_m, educ_f, and income)
+table(complete.cases(test[,c("scorenum6","A06X_AGEM","SDQ","income","educ_m","educ_f")]))
+
+# Literacy: complete cases for scorelit6, SDQ (preschool et/or firstgrade),
+#age, and SES (educ_m, educ_f, and income)
+table(complete.cases(test[,c("scorelit6","A06X_AGEM","SDQ","income","educ_m","educ_f")]))
+
+# In total
+table(complete.cases(test[,c("scorelit6","A06X_AGEM","SDQ","income","educ_m","educ_f")]|test[,c("scorenum6","A06X_AGEM","SDQ","income","educ_m","educ_f")]))
+
+```
+
+# Description
+
+## Distribution of internalizing and externalizing scores by sex
+
+```{r}
+# Computing SEXE_ENF as factor. 
+test$sex<-factor(test$SEXE_ENF,labels=c("Boys","Girls"))
+
+
+# Distribution SDQ 
+ggplot(test,aes(x=INT,fill=sex)) + geom_histogram(bins=20,position='dodge') + labs(title="Internalizing scores distribution depending on the sexe")
+ggplot(test,aes(x=EXT,fill=sex)) + geom_histogram(bins=20,position='dodge') + labs(title="Externalizing scores distribution depending on the sexe")
+```
+
+## Correlation matrix
+
+```{r}
+corH3<-test[,c("scorenum4","scorelit4","agedev","scorenum6","scorelit6","mcascore","logincome","educ_m","educ_f","A06X_AGEM","INT","EXT")]
+colnames(corH3)<-c("Numeracy in kindergarten","Literacy in kindergarten","Developpemental age","Numeracy in first grade","Literacy in first grade","MB-CDI","Income","Mother education","Father education","Age in first grade","Internalizing score","Externalizing score")
+
+corH3<-cor(corH3,use="pairwise.complete.obs")
+
+corrplot(corH3, method = "color",type="upper", addCoef.col = "black",tl.pos = "lu", tl.col="black",tl.srt=40)
+```
+
+
+# Analysis
+
+## Hypothesis 1
+
+### Are internalizing scores different between boys and girls ?
+
+```{r}
+# INT suit une loi normale? Pas vraiment, mais grand effectif. 
+qqnorm(test$INT);qqline(test$INT)
+
+#Variance égale pour les 2 sexes => oui
+by(test$INT,test$sex,sd,na.rm=T)
+
+
+ggplot(test,aes(x=INT,fill=sex)) + geom_histogram(position='dodge')
+t.test(scale(INT)~sex,test, var.equal = T) 
+# Non significatif (p-value 0.16)
+
+```
+
+### Are externalizing scores different between boys and girls ?
+
+```{r}
+# EXT suit une loi normale? Pas vraiment, mais grand effectif. 
+qqnorm(test$EXT);qqline(test$EXT)
+
+#Variance égale pour les 2 sexes 
+by(test$EXT,test$sex,sd,na.rm=T)
+
+
+ggplot(test,aes(x=EXT,fill=sex)) + geom_histogram(position='dodge')
+t.test(scale(EXT)~sex,test, var.equal = T) 
+# Fortement significatif
+```
+
+## Hypothesis 2 : are internalizing and externalizing scores predictors of academic results in first grade?
+
+### First step: difference between boys and girls in numeracy and litteracy in first grade
+
+#### Numeracy in first grade
+
+```{r}
+reg0<-lm(scale(scorenum6)~scale(scorenum4)+A06X_AGEM+logincome+educ_m+educ_f,test)
+summary(reg0)
+
+```
+
+#### Literacy in first grade
+
+```{r}
+reg00<-lm(scale(scorelit6)~scale(scorelit4)+A06X_AGEM+logincome+educ_m+educ_f,test)
+summary(reg00)
+
+```
+
+### Description of the variables : correlation matrix
+
+```{r}
+# Correlation between variables 
+corH2<-test[,c("scorenum6","scorelit6","INT","EXT","scorenum4","scorelit4","A06X_AGEM","logincome","educ_m","educ_f")]
+corH2<-cor(corH2,use="pairwise.complete.obs")
+ggcorrplot(corH2,hc.order = TRUE,lab = TRUE,type = "lower", title = "Correlation matrix")
+```
+
+### Numeracy in first grade linear multiple regression analysis
+
+```{r}
+
+
+# Linearity
+pnum1<-ggplot(test,aes(x=scale(INT),y=scale(scorenum6))) + geom_point() + labs(x="Internalizing score") + geom_smooth(method='lm')
+pnum2<-ggplot(test,aes(x=scale(EXT),y=scale(scorenum6))) + geom_point() + labs(x="Externalieing score") + geom_smooth(method='lm')
+plot_grid(pnum1,pnum2,labels=c("INT","EXT"))
+
+
+# Normal distribution of error
+reg1<-lm(scale(scorenum6)~scale(INT)+ scale(EXT)+scale(scorenum4)+A06X_AGEM+logincome+educ_m+educ_f,test)
+ggplot(reg1,aes(x=residuals(reg1))) + geom_histogram()
+
+# Multicollinearity : using performance package. 
+check_collinearity(reg1)
+# all variance inflation factors around 1 => no correlation. 
+# Correlation between NUM4 and INT/EXT 
+pnum3<-ggplot(test,aes(x=scale(INT),y=scale(scorenum4))) + geom_point() + labs(x="Internalizing score") + geom_smooth(method='lm')
+pnum4<-ggplot(test,aes(x=scale(EXT),y=scale(scorenum4))) + geom_point() + labs(x="Externalieing score") + geom_smooth(method='lm')
+plot_grid(pnum3,pnum4,labels=c("INT","EXT"))
+
+#Homoskedacity: to test (how to plot multiple lm)
+check_model(reg1)
+
+#test
+summary(reg1)
+
+```
+
+### Literacy in first grade linear multiple regression analysis
+
+```{r}
+
+# Linearity
+plit1<-ggplot(test,aes(x=scale(INT),y=scale(scorelit6))) + geom_point() + labs(x="Internalizing score") + geom_smooth(method='lm')
+plit2<-ggplot(test,aes(x=scale(EXT),y=scale(scorelit6))) + geom_point() + labs(x="Externalieing score") + geom_smooth(method='lm')
+plot_grid(plit1,plit2,labels=c("INT","EXT"))
+
+# Normal distribution of error
+reg2<-lm(scale(scorelit6)~scale(INT)+ scale(EXT)+scale(scorelit4)+A06X_AGEM+logincome+educ_m+educ_f,test)
+ggplot(reg2,aes(x=residuals(reg2))) + geom_histogram()
+
+# Multicollinearity : using performance package. 
+check_collinearity(reg2)
+# all variance inflation factors around 1 => no correlation. 
+# Correlations between LIT4 and INT/EXT
+plit3<-ggplot(test,aes(x=scale(INT),y=scale(scorelit4))) + geom_point() + labs(x="Internalizing score") + geom_smooth(method='lm')
+plit4<-ggplot(test,aes(x=scale(EXT),y=scale(scorelit4))) + geom_point() + labs(x="Externalieing score") + geom_smooth(method='lm')
+plot_grid(plit3,plit4,labels=c("INT","EXT"))
+
+#Homoskedacity: to test (how to plot multiple lm)
+check_model(reg2)
+
+#test
+summary(reg2)
+```
+
+## Hypothesis 3 : are internalizing and externalizing scores mediators in the relations between sex and numeracy in first grade on the one hand, and literacy on the other hand ?
+
+### Computing sclaed variables for academic scores :
+
+```{r}
+test$scaled_scorenum6<-scale(test$scorenum6)
+test$scaled_scorelit6<-scale(test$scorelit6)
+test$EXT<-scale(test$EXT)
+test$INT<-scale(test$INT)
+```
+
+### Numeracy in first grade mediation analysis
+
+```{r}
+model_num <- '
+scaled_scorenum6 ~ b1 * INT + b2 * EXT + c * sex + c7*educ_m + c9*educ_f + c8*logincome + c10*A06X_AGEM
+ INT ~ a1 * sex +  z7*educ_m + z9*educ_f + z8*logincome
+ EXT ~ a2 * sex +  y7*educ_m + y9*educ_f + y8*logincome
+indirect_INT := a1 * b1
+ indirect_EXT := a2 * b2
+ total := c + (a1 * b1) + (a2 * b2)
+ perc_INT := indirect_INT/total*100
+ perc_EXT := indirect_EXT/total*100
+'
+
+fit_num <- sem(model_num, data = test)
+summary(fit_num)
+lavaanPlot(model = fit_num, edge_options = list(color = "grey"),coef=T,sig=0.05)
+
+```
+
+### Literacy in first grade mediation analysis
+
+```{r}
+
+model_lit <- '
+scaled_scorelit6 ~ b1 * INT + b2 * EXT + c * sex + c7*educ_m + c9*educ_f + c8*logincome + c10*A06X_AGEM
+ INT ~ a1 * sex +  z7*educ_m + z9*educ_f + z8*logincome
+ EXT ~ a2 * sex +  y7*educ_m + y9*educ_f + y8*logincome
+indirect_INT := a1 * b1
+ indirect_EXT := a2 * b2
+ total := c + (a1 * b1) + (a2 * b2)
+ perc_INT := indirect_INT/total*100
+ perc_EXT := indirect_EXT/total*100
+'
+
+
+fit_lit <- sem(model_lit, data = test)
+summary(fit_lit)
+
+lavaanPlot(model = fit_lit, edge_options = list(color = "grey"),coef=T,sig=0.05)
+```
+
+## Hypothesis 4 : are there interactions of sex on internalizing and externalizing scores in their associations with numeracy scores in first grades on the one hand, and with literacy scores in first grade on the other hand ?
+
+### Numeracy in first grade interaction analysis
+
+```{r}
+int_num<-lm(scale(scorenum6)~scale(INT)*sex + scale(EXT)*sex + logincome + 
+              educ_f + educ_m + A06X_AGEM, test)
+summary(int_num)
+p1<- interact_plot(model = int_num, pred = EXT, modx = sex, main.title = "Interaction between EXT and gender on scorenum6", interval = T,int.type = "confidence")
+p1<- p1 + ylim(-1.5, 0.5)
+p2 <- interact_plot(model = int_num, pred = INT, modx = sex, main.title = "Interaction between INT and gender on scorenum6", interval = T,int.type = "confidence") 
+p2<- p2 + ylim(-1.5, 0.5)
+print(p1)
+print(p2)
+```
+
+### Literacy in first grade interaction analysis
+
+```{r}
+int_lit<-lm(scale(scorelit6)~scale(INT)*sex + scale(EXT)*sex + logincome + 
+              educ_f + educ_m + A06X_AGEM, test)
+summary(int_lit)
+p3<-interact_plot(model = int_lit, pred = EXT, modx = sex, main.title = "Interaction between EXT and gender on scorelit6", interval = T,int.type = "confidence")
+p3<- p3 + ylim(-1.5, 0.5)
+p4<- interact_plot(model = int_lit, pred = INT, modx = sex, main.title = "Interaction between INT and gender on scorelit6", interval = T,int.type = "confidence")
+p4<- p4 + ylim(-1.5, 0.5)
+print(p3) 
+print(p4)
+```
+
+# Exploratory analysis
+
+## Mediation + agedev + mca in literacy
+
+```{r}
+agedev_model_lit <- '
+scaled_scorelit6 ~ b1 * INT + b2 * EXT + c * sex + b3*mcascore + b4*agedev + c7*educ_m + c9*educ_f + c8*logincome + c10*A06X_AGEM
+ INT ~ a1 * sex +  z7*educ_m + z9*educ_f + z8*logincome
+ EXT ~ a2 * sex +  y7*educ_m + y9*educ_f + y8*logincome
+ mcascore ~ a3 * sex + x7*educ_m + x9*educ_f + x8*logincome
+ agedev ~ a4 * sex + w7*educ_m + w9*educ_f + w8*logincome
+ indirect_INT := a1 * b1
+ indirect_EXT := a2 * b2
+ indirect_mca := a3*b3
+ indirect_agedev:= a4*b4
+ 
+ 
+ total := c + (a1 * b1) + (a2 * b2) + (a3 * b3) + (a4*b4)
+ perc_INT := indirect_INT/total*100
+ perc_EXT := indirect_EXT/total*100
+ perc_mcascore := indirect_mca/total*100
+ perc_agedev := indirect_agedev/total*100
+'
+
+fit_agedev_lit <- sem(agedev_model_lit, data = test)
+summary(fit_agedev_lit)
+```
+
+### Mediation + agedev + mca in numeracy
+
+```{r}
+agedev_model_num <- '
+scaled_scorenum6 ~ b1 * INT + b2 * EXT + c * sex + b3*mcascore + b4*agedev + c7*educ_m + c9*educ_f + c8*logincome + c10*A06X_AGEM
+ INT ~ a1 * sex +  z7*educ_m + z9*educ_f + z8*logincome
+ EXT ~ a2 * sex +  y7*educ_m + y9*educ_f + y8*logincome
+ mcascore ~ a3 * sex + x7*educ_m + x9*educ_f + x8*logincome
+ agedev ~ a4 * sex + w7*educ_m + w9*educ_f + w8*logincome
+ indirect_INT := a1 * b1
+ indirect_EXT := a2 * b2
+ indirect_mca := a3*b3
+ indirect_agedev:= a4*b4
+ 
+ 
+ total := c + (a1 * b1) + (a2 * b2) + (a3 * b3) + (a4*b4)
+ perc_INT := indirect_INT/total*100
+ perc_EXT := indirect_EXT/total*100
+ perc_mcascore := indirect_mca/total*100
+ perc_agedev := indirect_agedev/total*100
+'
+
+fit_agedev_num <- sem(agedev_model_num, data = test)
+summary(fit_agedev_num)
+```
+
