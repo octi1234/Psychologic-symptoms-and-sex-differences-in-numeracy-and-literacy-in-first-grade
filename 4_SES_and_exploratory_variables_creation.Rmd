@@ -1,0 +1,129 @@
+---
+title: "SES and exploratory variables"
+output: html_document
+date: "2025-09-20"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Loading files
+```{r}
+setwd("/Volumes/Donn_es_ELFE/20230217Dem768_511_HP")
+database <- read_sas("data_dem768_511_hp.sas7bdat")
+scoreschool<-read.csv("scoreschool")
+score_sdq<-read.csv("score_sdq")
+dataEQR12 <- read_sas("eqr12.sas7bdat")
+EQR39<-read_sas("eqr39.sas7bdat")
+```
+
+
+# Control variables
+
+```{r}
+ses <- database[,c( "A02M_TOTREVEN", "A02P_TOTREVEN","A03R_TOTREVEN", "A03R2_TOTREVEN", "A05R_TOTREVEN", "A05R2_TOTREVEN", "id_Dem768_511_HP")]
+
+ses2 <- dataEQR12[,c("meduc_2y", "feduc_2y", "meduc_3y", "feduc_3y","meduc_5y", "feduc_5y", "id_Dem768_511_HP")]
+ses <- merge(ses, ses2, by="id_Dem768_511_HP")
+
+rm(ses2, dataEQR12)
+ses <- ses %>% 
+  mutate(A02M_TOTREVEN = case_when(A02M_TOTREVEN == 888888 ~ NA,
+                                   A02M_TOTREVEN == 999999 ~ NA,
+                                   A02M_TOTREVEN == 99999 ~ NA,
+                                   TRUE ~ A02M_TOTREVEN),
+         A02P_TOTREVEN = case_when(A02P_TOTREVEN == 888888 ~ NA,
+                                   A02P_TOTREVEN == 999999 ~ NA,
+                                   A02P_TOTREVEN == 99999 ~ NA,
+                                   TRUE ~ A02P_TOTREVEN),
+         A03R_TOTREVEN = case_when(A03R_TOTREVEN == 888888 ~ NA,
+                                   A03R_TOTREVEN == 999999 ~ NA,
+                                   A03R_TOTREVEN == 99999 ~ NA,
+                                   TRUE ~ A03R_TOTREVEN),
+         A03R2_TOTREVEN = case_when(A03R2_TOTREVEN == 888888 ~ NA,
+                                    A03R2_TOTREVEN == 999999 ~ NA,
+                                    A03R2_TOTREVEN == 99999 ~ NA,
+                                    TRUE ~ A03R2_TOTREVEN),
+         A05R_TOTREVEN = case_when(A05R_TOTREVEN == 888888 ~ NA,
+                                   A05R_TOTREVEN == 999999 ~ NA,
+                                   A05R_TOTREVEN == 99999 ~ NA,
+                                   TRUE ~ A05R_TOTREVEN),
+         A05R2_TOTREVEN = case_when(A05R2_TOTREVEN == 888888 ~ NA,
+                                    A05R2_TOTREVEN == 999999 ~ NA,
+                                    A05R2_TOTREVEN == 99999 ~ NA,
+                                    TRUE ~ A05R2_TOTREVEN))
+
+# Average household income
+ses$income_2 <- rowMeans(ses[, c("A02P_TOTREVEN", "A02M_TOTREVEN")], na.rm = TRUE)
+ses$income_3 <- rowMeans(ses[, c("A03R_TOTREVEN", "A03R2_TOTREVEN")], na.rm = TRUE)
+ses$income_5 <- rowMeans(ses[, c("A05R_TOTREVEN", "A05R2_TOTREVEN")], na.rm = TRUE)
+
+#removing outliers of income
+ses$income_2[ses$income_2>mean(ses$income_2, na.rm=TRUE) + 4*sd(ses$income_2, na.rm=TRUE)] <- NA
+ses$income_3[ses$income_3>mean(ses$income_3, na.rm=TRUE) + 4*sd(ses$income_3, na.rm=TRUE)] <- NA
+ses$income_5[ses$income_5>mean(ses$income_5, na.rm=TRUE) + 4*sd(ses$income_5, na.rm=TRUE)] <- NA
+# cor(inc2/inc3/inc5, inc2/inc3/inc5) >0.8. -> we could create a single income measure
+
+ses$income <- rowMeans(ses[, c("income_2", "income_3", "income_5")], na.rm = TRUE)
+ses$logincome <- log(ses$income)
+
+# In most cases education doesn't change : single education variable for each parent = maximum of available values
+max_row <- function(row) {
+  if(all(is.na(row))) {
+    return(NA)
+  } else {
+    return(max(row, na.rm = TRUE))
+  }
+}
+
+ses$educ_m <- apply(ses[, c("meduc_2y", "meduc_3y", "meduc_5y")], 1, max_row)
+ses$educ_f <- apply(ses[, c("feduc_2y", "feduc_3y", "feduc_5y")], 1, max_row)
+# (cor(meduc2y/meduc_3y/meduc_5y, educ_m)) >0.98, same for fathers
+
+ses <- ses %>% select(-A02P_TOTREVEN, -A02M_TOTREVEN, -A03R_TOTREVEN, 
+                      -A03R2_TOTREVEN, -A05R_TOTREVEN, -A05R2_TOTREVEN, 
+                      -meduc_2y, -meduc_3y, -meduc_5y, -feduc_2y, -feduc_3y, -feduc_5y)
+
+```
+
+# Merging dependant, independant and confounding variables
+
+```{r}
+# Merging the variables. 
+test<-merge(score_sdq,ses,by = "id_Dem768_511_HP")
+test<-merge(scoreschool,test, by = "id_Dem768_511_HP")
+```
+
+## Exploratory variables 
+### Computing Mac Arthur score and merging with test df.
+```{r}
+mca<-cbind(id_Dem768_511_HP=database$id_Dem768_511_HP,database[,574:673])
+mca[mca=="2"]<-0
+mca$mcascore<-rowSums(mca[,2:101],na.rm = F)
+delete<-2:101
+mca<-mca[,-delete]
+test<-merge(test,database[,c("id_Dem768_511_HP","A05R_VAGUE")],by="id_Dem768_511_HP")
+colnames(test)[colnames(test) == "A05R_VAGUE"] <- "vague"
+test<-merge(test,mca,by="id_Dem768_511_HP")
+cor(test$mcascore,test$EXT, use="pairwise.complete.obs")
+ggplot(test,aes(x=scale(mcascore), y=EXT)) + geom_jitter() +geom_smooth(method='lm')
+```
+
+### Computing Developmental Quotien constructed data from ELFE cohort.
+```{r}
+test<-merge(test,EQR39[,c("id_Dem768_511_HP","a5_QD","a5_agedev")],by = "id_Dem768_511_HP")
+
+# Renommer une colonne
+colnames(test)[colnames(test) == "a5_QD"] <- "QD"
+colnames(test)[colnames(test) == "a5_agedev"] <- "agedev"
+
+```
+
+# Creating "test" file 
+
+```{r}
+write.csv(test, file="test", row.names=FALSE)
+```
+
+
