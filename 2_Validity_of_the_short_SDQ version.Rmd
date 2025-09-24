@@ -1,0 +1,159 @@
+---
+title: "2_Validity_SDQ_Short"
+output: html_document
+date: "2025-09-23"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Computing parental SDQ questionnaire
+## Extracting parental SDQ questionnaire items from data
+```{r mise en place}
+setwd("/Volumes/Donn_es_ELFE/20230217Dem768_511_HP")
+library(haven)
+library(ggplot2)
+data1 <- read_sas("data_dem768_511_hp.sas7bdat")
+
+data<-data1[,c(
+               "A05R_PLEURE","A05R_PLAINT","A05R_INQUIE","A05R_ANXIEU",
+               "A05R_PEURFREQ","A05R_SOLITA","A05R_AAMI","A05R_ESTAIME",
+               "A05R_HARCEL","A05R_PREADUL",
+               "A05R_CRISES","A05R_OBEIS","A05R_BAGAR",
+               "A05R_MENTTRI","A05R_VOLEMA","A05R_AGITE","A05R_NTIENTP",
+               "A05R_DISTRA","A05R_REFLECH","A05R_ATTENTI")]
+
+```
+
+## Missing answers
+```{r}
+# A05R_ SDQ items:
+# 8: REF (refuse to answer)
+# 9: NSP (does not know)
+data[data==8|data==9]<-NA
+
+```
+
+## Reversing the score of following items because of the framing of the question:
+```{r}
+data$A05R_OBEIS<-4-data$A05R_OBEIS
+data$A05R_AAMI<-4-data$A05R_AAMI
+data$A05R_ESTAIME<-4-data$A05R_ESTAIME
+data$A05R_REFLECH<-4-data$A05R_REFLECH
+data$A05R_ATTENTI<-4-data$A05R_ATTENTI
+```
+
+
+
+# Cronbach's alphas
+```{r}
+library(psych)
+```
+
+## Cronbach's alphas of the "complete" version (including 20 items) 
+### Externalizing dimension (10 items)
+```{r Cronbach complete SDQ }
+cronbach_complete_EXT<-alpha(data[,c("A05R_CRISES","A05R_OBEIS","A05R_BAGAR",
+                                   "A05R_MENTTRI","A05R_VOLEMA","A05R_AGITE","A05R_NTIENTP",
+                                   "A05R_DISTRA","A05R_REFLECH","A05R_ATTENTI")])
+cronbach_complete_EXT
+```
+
+### Internalizing dimension (10 items)
+```{r}
+cronbach_complete_INT<-alpha(data[,c("A05R_PLEURE","A05R_PLAINT","A05R_INQUIE","A05R_ANXIEU",
+                                   "A05R_PEURFREQ","A05R_SOLITA","A05R_AAMI","A05R_ESTAIME",
+                                   "A05R_HARCEL","A05R_PREADUL")])
+cronbach_complete_INT
+```
+
+
+## Cronbach's alpha of the "short" version  (including 9 items)
+### Externalizing dimension (5 items)
+```{r Cronbach short version}
+cronbach_short_EXT<-alpha(data[,c("A05R_OBEIS","A05R_NTIENTP","A05R_DISTRA","A05R_REFLECH","A05R_ATTENTI")])
+cronbach_short_EXT
+```
+
+### Internalizings dimension (4 items)
+```{r}
+cronbach_short_INT<-alpha(data[,c("A05R_PLAINT","A05R_INQUIE","A05R_ANXIEU","A05R_AAMI")])
+cronbach_short_INT
+```
+
+
+
+# Correlations of externalizing and internalizing dimensions between "short" and "complete" versions 
+
+## Externalzing dimension
+```{r}
+SDQ_complete_EXT<-data[,c("A05R_CRISES","A05R_OBEIS","A05R_BAGAR",
+               "A05R_MENTTRI","A05R_VOLEMA","A05R_AGITE","A05R_NTIENTP",
+               "A05R_DISTRA","A05R_REFLECH","A05R_ATTENTI")]
+
+SDQ_short_EXT<-data[,c("A05R_OBEIS","A05R_NTIENTP","A05R_DISTRA","A05R_REFLECH","A05R_ATTENTI")]
+
+short_EXT<-scale(rowSums(SDQ_short_EXT))
+complete_EXT<-scale(rowSums(SDQ_complete_EXT))
+SDQ<-data.frame(short_EXT,complete_EXT)
+ggplot(SDQ,aes(x=complete_EXT,y=short_EXT)) + geom_jitter()+geom_smooth(method='lm')
+cor(SDQ$complete_EXT,SDQ$short_EXT, use = "complete.obs")
+
+```
+
+
+## Internalizing dimension
+```{r}
+SDQ_complete_INT<-data[,c("A05R_PLEURE","A05R_PLAINT","A05R_INQUIE","A05R_ANXIEU",
+               "A05R_PEURFREQ","A05R_SOLITA","A05R_AAMI","A05R_ESTAIME",
+               "A05R_HARCEL","A05R_PREADUL")]
+SDQ_short_INT<-data[,c("A05R_PLAINT","A05R_INQUIE","A05R_ANXIEU","A05R_AAMI")]
+short_INT<-scale(rowSums(SDQ_short_INT))
+complete_INT<-scale(rowSums(SDQ_complete_INT))
+SDQ<-cbind(SDQ,short_INT,complete_INT)
+ggplot(SDQ,aes(x=complete_INT,y=short_INT)) + geom_jitter()+geom_smooth(method='lm')
+cor(SDQ$complete_INT,SDQ$short_INT, use = "complete.obs")
+```
+
+# Confirmatory factor analyses (CFA)
+```{r}
+library(lavaan)
+library(effectsize)
+library(semPlot)
+```
+
+## 2-factor CFA 
+
+### "Complete" version of the parental SDQ
+```{r CFA 2 factors, complete parental version}
+
+SDQ.model_2f<- 'internalizing=~ A05R_PLEURE + A05R_PLAINT + A05R_INQUIE + A05R_ANXIEU
+               + A05R_PEURFREQ + A05R_SOLITA + A05R_AAMI + A05R_ESTAIME
+               + A05R_HARCEL+ A05R_PREADUL
+              
+externalizing =~ A05R_CRISES + A05R_OBEIS+ A05R_BAGAR
+               + A05R_MENTTRI + A05R_VOLEMA + A05R_AGITE + A05R_NTIENTP
+               + A05R_DISTRA + A05R_REFLECH + A05R_ATTENTI'
+fit_2f<-cfa(SDQ.model_2f,data=data)
+summary(fit_2f,fit.measures=TRUE)
+semPaths(fit_2f, "std", layout = "circle",rotation=1, whatLabels = "par", nCharNodes = 15, edge.label.cex = 1, label.cex = 4, sizeMan = 5)
+```
+
+
+### "Short" version of the parental SDQ
+```{r CFA 2 factors, short parental version}
+short_SDQ.model_2f<- 'internalizing=~  A05R_PLAINT + A05R_INQUIE + A05R_ANXIEU
+               +  A05R_AAMI
+             
+externalizing =~ A05R_OBEIS+  A05R_NTIENTP
+               + A05R_DISTRA + A05R_REFLECH + A05R_ATTENTI'
+short_fit_2f<-cfa(short_SDQ.model_2f,data=data)
+summary(short_fit_2f,fit.measures=TRUE)
+semPaths(short_fit_2f,"std", layout = "circle",rotation=1, whatLabels = "par", nCharNodes = 15, edge.label.cex = 1, label.cex = 3, sizeMan = 5)
+
+
+```
+
+
+
