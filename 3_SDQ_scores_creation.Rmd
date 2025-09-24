@@ -1,0 +1,146 @@
+---
+title: "3_SDQ_scores"
+output: html_document
+date: "2025-09-20"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Loading data and selecting variables from SDQ, habitual teacher in preschool, age and sex.
+
+```{r}
+library(ggplot2)
+library(ggcorrplot)
+library(effsize)
+library(cowplot)
+library(haven)
+library(dplyr)
+library(lavaan)
+library(lavaanPlot)
+library(performance)
+library(interactions)
+library(easystats)
+library(corrplot)
+
+```
+
+```{r, }
+setwd("/Volumes/Donn_es_ELFE/20230217Dem768_511_HP")
+database <- read_sas("data_dem768_511_hp.sas7bdat")
+score_sdq<-database[,c("id_Dem768_511_HP","A04X_ENSHABIT",
+                "A04X_PLAINT","A04X_INQUIE","A04X_ANXIEU","A04X_AAMI",
+                "A04X_OBEIS","A04X_NTIENTP","A04X_DISTRA","A04X_REFLECHI","A04X_ATTENTI",
+                
+                "A05R_PLAINT","A05R_INQUIE","A05R_PLEURE","A05R_ANXIEU","A05R_PEURFREQ",
+                "A05R_SOLITA","A05R_AAMI","A05R_ESTAIME","A05R_HARCEL","A05R_PREADUL",
+                "A05R_CRISES","A05R_OBEIS","A05R_BAGAR","A05R_MENTTRI","A05R_VOLEMA",
+                "A05R_AGITE","A05R_NTIENTP","A05R_DISTRA","A05R_REFLECH","A05R_ATTENTI",
+                "A06X_AGEM","SEXE_ENF")]
+```
+
+# Computing SDQ scores
+
+## Missing answers at 3.5 and 5.5 years old
+
+```{r}
+# A04X_ and A05R_ SDQ items:
+# 8: REF (refuse to answer)
+# 9: NSP (does not know)
+
+score_sdq[score_sdq==8|score_sdq==9]<-NA
+
+```
+
+## At 3.5 years old
+
+```{r}
+# Deleting data for SDQ aswered by non habitual teacher:
+
+# A04X_ENSHABIT : Etes vous ? 
+# 1: l'enseignant habituel de cette classe
+# 2: l'un des enseignants habituels (classe partagée, décharge...)
+# 3: un enseignant qui remplace l'(les) enseignant(s) habituel(s) de cette classe
+
+score_sdq[which(score_sdq$A04X_ENSHABIT=="3"|is.na(score_sdq$A04X_ENSHABIT)),c("A04X_PLAINT","A04X_OBEIS","A04X_INQUIE",
+                                                               "A04X_NTIENTP","A04X_AAMI","A04X_DISTRA","A04X_ANXIEU",
+                                                               "A04X_REFLECHI","A04X_ATTENTI")]<-NA
+
+# Reversing the score of following items because of the framing of the question:
+score_sdq$A04X_PLAINT<-4-score_sdq$A04X_PLAINT
+score_sdq$A04X_INQUIE<-4-score_sdq$A04X_INQUIE
+score_sdq$A04X_NTIENTP<-4-score_sdq$A04X_NTIENTP
+score_sdq$A04X_DISTRA<-4-score_sdq$A04X_DISTRA
+score_sdq$A04X_ANXIEU<-4-score_sdq$A04X_ANXIEU
+
+# Deleting data for SDQ uncompleted, ie with at least one missing data (including answers "refuse to answer" or "does not know")
+score_sdq[which(rowSums(is.na(score_sdq[c("A04X_PLAINT","A04X_OBEIS","A04X_INQUIE",
+                                "A04X_NTIENTP","A04X_AAMI","A04X_DISTRA","A04X_ANXIEU",
+                                "A04X_REFLECHI","A04X_ATTENTI")]))>0),
+     c("A04X_PLAINT","A04X_OBEIS","A04X_INQUIE",
+       "A04X_NTIENTP","A04X_AAMI","A04X_DISTRA","A04X_ANXIEU",
+       "A04X_REFLECHI","A04X_ATTENTI")]<-NA
+
+# Computing of SDQ internalizing (INT4) and externalizing (EXT4) scores
+colnames(score_sdq)
+score_sdq$SDQ4<-rowMeans(score_sdq[,3:11],na.rm=F)
+score_sdq$INT4<-rowMeans(score_sdq[,3:6],na.rm=F)
+score_sdq$EXT4<-rowMeans(score_sdq[,7:11],na.rm=F)
+
+```
+
+
+## At 5.5 years old
+
+```{r}
+# Reversing the score of following items because of the framing of the question:
+score_sdq$A05R_OBEIS<-4-score_sdq$A05R_OBEIS
+score_sdq$A05R_AAMI<-4-score_sdq$A05R_AAMI
+score_sdq$A05R_ESTAIME<-4-score_sdq$A05R_ESTAIME
+score_sdq$A05R_REFLECH<-4-score_sdq$A05R_REFLECH
+score_sdq$A05R_ATTENTI<-4-score_sdq$A05R_ATTENTI
+
+# Deleting data for SDQ uncompleted, ie with at least one missing data (including answers "refuse to answer" or "does not know")
+score_sdq[which(rowSums(is.na(score_sdq[c("A05R_PLEURE","A05R_PLAINT","A05R_INQUIE","A05R_ANXIEU",
+                                          "A05R_PEURFREQ","A05R_CRISES","A05R_OBEIS","A05R_BAGAR",
+                                          "A05R_MENTTRI","A05R_VOLEMA","A05R_AGITE","A05R_NTIENTP",
+                                          "A05R_DISTRA","A05R_REFLECH","A05R_ATTENTI","A05R_SOLITA",
+                                          "A05R_AAMI","A05R_ESTAIME","A05R_HARCEL","A05R_PREADUL")]))>0),
+     c("A05R_PLEURE","A05R_PLAINT","A05R_INQUIE","A05R_ANXIEU",
+       "A05R_PEURFREQ","A05R_CRISES","A05R_OBEIS","A05R_BAGAR",
+       "A05R_MENTTRI","A05R_VOLEMA","A05R_AGITE","A05R_NTIENTP",
+       "A05R_DISTRA","A05R_REFLECH","A05R_ATTENTI","A05R_SOLITA",
+       "A05R_AAMI","A05R_ESTAIME","A05R_HARCEL","A05R_PREADUL")]<-NA
+
+# Computing of SDQ internalizing (INT5) and externalizing (EXT5) scores
+colnames(score_sdq)
+score_sdq$SDQ5<-rowMeans(score_sdq[,12:31],na.rm=F)
+score_sdq$INT5<-rowMeans(score_sdq[,12:21],na.rm=F)
+score_sdq$EXT5<-rowMeans(score_sdq[,22:31],na.rm=F)
+
+
+```
+
+## Computing SDQ scores as the mean of 3.5 years old or 5.5 years old
+
+```{r}
+score_sdq$SDQ<-rowMeans(score_sdq[,c("SDQ5",("SDQ4"))],na.rm=T)
+score_sdq$INT<-rowMeans(score_sdq[,c("INT4","INT5")], na.rm=T)
+score_sdq$EXT<-rowMeans(score_sdq[,c("EXT4","EXT5")],na.rm=T)
+
+# Keeping SDQ computed scores, sex, and age. 
+score_sdq <- score_sdq %>% select(-A04X_ENSHABIT,-A04X_PLAINT,-A04X_INQUIE,-A04X_ANXIEU,-A04X_AAMI,
+                        -A04X_OBEIS,-A04X_NTIENTP,-A04X_DISTRA,-A04X_REFLECHI,-A04X_ATTENTI,
+                        
+                        -A05R_PLAINT,-A05R_INQUIE,-A05R_PLEURE,-A05R_ANXIEU,-A05R_PEURFREQ,
+                        -A05R_SOLITA,-A05R_AAMI,-A05R_ESTAIME,-A05R_HARCEL,-A05R_PREADUL,
+                        -A05R_CRISES,-A05R_OBEIS,-A05R_BAGAR,-A05R_MENTTRI,-A05R_VOLEMA,
+                        -A05R_AGITE,-A05R_NTIENTP,-A05R_DISTRA,-A05R_REFLECH,-A05R_ATTENTI)
+```
+
+# Creating the file : score_sdq
+```{r}
+write.csv(score_sdq, file="score_sdq", row.names=FALSE)
+```
+
