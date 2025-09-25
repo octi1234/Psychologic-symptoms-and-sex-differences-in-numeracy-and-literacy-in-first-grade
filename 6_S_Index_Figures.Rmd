@@ -345,6 +345,10 @@ test$scorenum6<-scale(test$scorenum6)
 test$scorenum4<-scale(test$scorenum4)
 test$scorelit6<-scale(test$scorelit6)
 test$scorelit4<-scale(test$scorelit4)
+test$EXT<-scale(test$EXT)
+test$INT<-scale(test$INT)
+test$agedev<-scale(test$agedev)
+test$mcascore<-scale(test$mcascore)
 ```
 
 ## Externalizing and internalizing scores 
@@ -383,5 +387,5 @@ s.index (test$mcascore[test$sex=="Boys"],test$mcascore[test$sex=="Girls"], xlab 
 ## Developpmental age from CDI 
 
 ```{r}
-s.index (test$agedev[test$sex=="Boys"],test$agedev[test$sex=="Girls"], xlab = "Developmental age at 5.5 years old (in months)", group.labels = c("Boys","Girls"))
+s.index (test$agedev[test$sex=="Boys"],test$agedev[test$sex=="Girls"], xlab = "Developmental age at 5.5 years old", group.labels = c("Boys","Girls"))
 ```
